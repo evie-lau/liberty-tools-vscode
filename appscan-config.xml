@@ -1,0 +1,6 @@
+<Configuration>
+    <Targets>
+      <Target outputs-only="true" path="./src">
+      </Target>
+    </Targets>
+  </Configuration>

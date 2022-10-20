@@ -1,0 +1,52 @@
+name: Run SAST appscan
+
+on:
+  push:
+    branches: '**'  # TODO remove this to prevent building all the time on forks
+  pull_request:
+    branches: [main]
+
+jobs:
+  appscan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Get Date
+        id: get-date
+        run: |
+          echo "date=$(/bin/date -u "+%Y%m")" >> $GITHUB_OUTPUT
+        shell: bash
+      - name: Cache appscan
+        id: cache-appscan
+        uses: actions/cache@v3
+        with:
+          path: appscan-folder
+          key: ${{ runner.os }}-${{ steps.get-date.outputs.date }}-appscan
+      - name: Download appscan
+        if: steps.cache-appscan.outputs.cache-hit != 'true'
+        run: |
+            curl --output sast.zip https://cloud.appscan.com/api/SCX/StaticAnalyzer/SAClientUtil?os=linux
+            unzip sast.zip -d appscan-folder
+      - name: Run appscan
+        env:
+          APPSCAN_API_KEY_SECRET: ${{ secrets.APPSCAN_API_KEY_SECRET }}
+          APPSCAN_API_KEY_ID: ${{ secrets.APPSCAN_API_KEY_ID }}
+          APPSCAN_APP_ID: ${{ secrets.APPSCAN_APP_ID }}
+        run: |
+            appscan=$(find . -type f -name appscan.sh)
+            appscanConfig=$(find . -type f -name appscan-config.xml)
+            echo $appscan
+            echo $appscanConfig
+            ${appscan} prepare -c ${appscanConfig}
+            ${appscan} api_login -P $APPSCAN_API_KEY_SECRET -u $APPSCAN_API_KEY_ID -persist
+            irxPath=$(find . -type f -name *.irx)
+            irxFile=$(basename ${irxPath})
+            queueOutput=$(${appscan} queue_analysis -a $APPSCAN_APP_ID -f ${irxPath} -n ${irxFile})
+            echo $queueOutput
+      - uses: actions/upload-artifact@v3
+        with:
+          name: appscan
+          path: ./**/*.irx
+          if-no-files-found: warn
+          retention-days: 7
